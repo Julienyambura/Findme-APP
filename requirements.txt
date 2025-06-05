@@ -1,0 +1,6 @@
+streamlit
+opencv-python
+numpy
+face_recognition
+fer
+scikit-learn

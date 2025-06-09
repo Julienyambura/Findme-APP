@@ -1,22 +1,24 @@
 # findme_app/app.py
-import streamlit as st
+from flask import Flask, render_template, Response, request, jsonify
 import cv2
 import numpy as np
 import os
 import json
 import logging
+from datetime import datetime
+import base64
+
+app = Flask(__name__)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Initialize face detector
 try:
-    # Initialize face detector
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 except Exception as e:
     logger.error(f"Error initializing face detector: {str(e)}")
-    st.error("Error initializing face detection. Please try again later.")
-    st.stop()
 
 # Load known face embeddings
 DB_PATH = "database/data.json"
@@ -33,9 +35,6 @@ def detect_faces_and_emotions(image):
         
         for (x, y, w, h) in faces:
             face_locations.append((y, x + w, y + h, x))
-            
-            # For now, we'll just detect if a face is present
-            # In a real application, you would implement emotion detection here
             emotions.append("Face Detected")
         
         return face_locations, emotions
@@ -46,95 +45,89 @@ def detect_faces_and_emotions(image):
 def draw_faces(image, face_locations, emotions):
     try:
         for (top, right, bottom, left), emotion in zip(face_locations, emotions):
-            # Draw rectangle around face
             cv2.rectangle(image, (left, top), (right, bottom), (0, 255, 0), 2)
-            
-            # Add emotion text
             cv2.putText(image, emotion, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        
         return image
     except Exception as e:
         logger.error(f"Error drawing faces: {str(e)}")
         return image
 
-st.set_page_config(page_title="FindMe+", layout="centered")
-st.title("👁️ FindMe+ – Face Detection")
-
-menu = st.sidebar.selectbox("Choose Action", ["Live Camera", "Detect & Match", "Add Missing Person"])
-
-if menu == "Live Camera":
-    st.subheader("📷 Live Webcam Detection")
-    run = st.checkbox("Start Camera")
-
-    FRAME_WINDOW = st.image([])
-    try:
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            st.error("Could not access webcam. Please make sure your webcam is connected and try again.")
-            st.stop()
-    except Exception as e:
-        logger.error(f"Error accessing webcam: {str(e)}")
-        st.error("Error accessing webcam. Please try again later.")
-        st.stop()
-
-    while run:
-        try:
-            ret, frame = cap.read()
-            if not ret:
-                st.error("Failed to access webcam.")
-                break
-
+def generate_frames():
+    cap = cv2.VideoCapture(0)
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
+        else:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             face_locations, emotions = detect_faces_and_emotions(frame_rgb)
             frame_annotated = draw_faces(frame_rgb.copy(), face_locations, emotions)
+            ret, buffer = cv2.imencode('.jpg', cv2.cvtColor(frame_annotated, cv2.COLOR_RGB2BGR))
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-            FRAME_WINDOW.image(frame_annotated)
-        except Exception as e:
-            logger.error(f"Error processing frame: {str(e)}")
-            st.error("Error processing video frame. Please try again.")
-            break
-    cap.release()
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-elif menu == "Detect & Match":
-    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
-    if uploaded_file:
-        try:
-            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-            frame = cv2.imdecode(file_bytes, 1)
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+@app.route('/detect', methods=['POST'])
+def detect_faces():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
 
-            face_locations, emotions = detect_faces_and_emotions(frame_rgb)
-            frame_with_faces = draw_faces(frame_rgb.copy(), face_locations, emotions)
+    try:
+        file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
+        frame = cv2.imdecode(file_bytes, 1)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            st.image(frame_with_faces, caption="Detected Faces", use_column_width=True)
+        face_locations, emotions = detect_faces_and_emotions(frame_rgb)
+        frame_with_faces = draw_faces(frame_rgb.copy(), face_locations, emotions)
 
-            if face_locations:
-                st.info(f"Detected {len(face_locations)} faces")
-            else:
-                st.warning("No faces detected.")
-        except Exception as e:
-            logger.error(f"Error processing uploaded image: {str(e)}")
-            st.error("Error processing image. Please try again with a different image.")
+        # Convert the processed image to base64
+        _, buffer = cv2.imencode('.jpg', cv2.cvtColor(frame_with_faces, cv2.COLOR_RGB2BGR))
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
 
-elif menu == "Add Missing Person":
-    st.subheader("📤 Add to Missing Person Database")
-    name = st.text_input("Enter Name")
-    add_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+        return jsonify({
+            'success': True,
+            'num_faces': len(face_locations),
+            'image': img_base64
+        })
+    except Exception as e:
+        logger.error(f"Error processing image: {str(e)}")
+        return jsonify({'error': 'Error processing image'}), 500
 
-    if name and add_file:
-        try:
-            file_bytes = np.asarray(bytearray(add_file.read()), dtype=np.uint8)
-            img = cv2.imdecode(file_bytes, 1)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-            
-            if len(faces) > 0:
-                st.success("Face detected and added to database.")
-            else:
-                st.error("No face detected in the image.")
-        except Exception as e:
-            logger.error(f"Error processing image for database: {str(e)}")
-            st.error("Error processing image. Please try again with a different image.")
+@app.route('/add_missing', methods=['POST'])
+def add_missing_person():
+    if 'file' not in request.files or 'name' not in request.form:
+        return jsonify({'error': 'Missing file or name'}), 400
+
+    name = request.form['name']
+    file = request.files['file']
+
+    try:
+        file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+
+        if len(faces) > 0:
+            # Here you would typically save the face data to your database
+            return jsonify({'success': True, 'message': 'Face detected and added to database'})
+        else:
+            return jsonify({'error': 'No face detected in the image'}), 400
+    except Exception as e:
+        logger.error(f"Error processing image for database: {str(e)}")
+        return jsonify({'error': 'Error processing image'}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)

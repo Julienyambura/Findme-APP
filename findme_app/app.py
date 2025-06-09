@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 import os
 import json
-from mtcnn import MTCNN
 from fer import FER
 import logging
 
@@ -13,9 +12,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 try:
-    # Initialize MTCNN and FER
-    detector = MTCNN()
-    emotion_detector = FER(mtcnn=True)
+    # Initialize face detector and emotion detector
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    emotion_detector = FER(mtcnn=False)
 except Exception as e:
     logger.error(f"Error initializing detectors: {str(e)}")
     st.error("Error initializing face detection. Please try again later.")
@@ -26,13 +25,15 @@ DB_PATH = "database/data.json"
 
 def detect_faces_and_emotions(image):
     try:
-        # Detect faces using MTCNN
-        faces = detector.detect_faces(image)
+        # Convert to grayscale for face detection
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        
+        # Detect faces using OpenCV
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
         face_locations = []
         emotions = []
         
-        for face in faces:
-            x, y, w, h = face['box']
+        for (x, y, w, h) in faces:
             face_locations.append((y, x + w, y + h, x))
             
             # Get emotion for the face
@@ -139,8 +140,10 @@ elif menu == "Add Missing Person":
             img = cv2.imdecode(file_bytes, 1)
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             
-            faces = detector.detect_faces(img_rgb)
-            if faces:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+            
+            if len(faces) > 0:
                 st.success("Face detected and added to database.")
             else:
                 st.error("No face detected in the image.")

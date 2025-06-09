@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 import os
 import json
-from deepface import DeepFace
 import logging
 
 # Configure logging
@@ -35,20 +34,9 @@ def detect_faces_and_emotions(image):
         for (x, y, w, h) in faces:
             face_locations.append((y, x + w, y + h, x))
             
-            # Get emotion for the face
-            face_img = image[y:y+h, x:x+w]
-            if face_img.size > 0:
-                try:
-                    # Analyze emotion using DeepFace
-                    result = DeepFace.analyze(face_img, actions=['emotion'], enforce_detection=False)
-                    if result and isinstance(result, list) and len(result) > 0:
-                        emotion = result[0]['dominant_emotion']
-                        emotions.append(emotion)
-                    else:
-                        emotions.append("Unknown")
-                except Exception as e:
-                    logger.error(f"Error detecting emotion: {str(e)}")
-                    emotions.append("Unknown")
+            # For now, we'll just detect if a face is present
+            # In a real application, you would implement emotion detection here
+            emotions.append("Face Detected")
         
         return face_locations, emotions
     except Exception as e:
@@ -70,7 +58,7 @@ def draw_faces(image, face_locations, emotions):
         return image
 
 st.set_page_config(page_title="FindMe+", layout="centered")
-st.title("👁️ FindMe+ – Face Detection + Emotion AI")
+st.title("👁️ FindMe+ – Face Detection")
 
 menu = st.sidebar.selectbox("Choose Action", ["Live Camera", "Detect & Match", "Add Missing Person"])
 
@@ -119,11 +107,10 @@ elif menu == "Detect & Match":
             face_locations, emotions = detect_faces_and_emotions(frame_rgb)
             frame_with_faces = draw_faces(frame_rgb.copy(), face_locations, emotions)
 
-            st.image(frame_with_faces, caption="Detected Faces & Emotions", use_column_width=True)
+            st.image(frame_with_faces, caption="Detected Faces", use_column_width=True)
 
             if face_locations:
-                for emotion in emotions:
-                    st.info(f"Detected Emotion: {emotion}")
+                st.info(f"Detected {len(face_locations)} faces")
             else:
                 st.warning("No faces detected.")
         except Exception as e:

@@ -5,3 +5,5 @@ fer==22.4.0
 scikit-learn==1.7.0
 cmake==3.28.3
 mtcnn==1.0.0
+Pillow>=9.0.0
+imghdr

@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import os
 import json
-from fer import FER
+from deepface import DeepFace
 import logging
 
 # Configure logging
@@ -12,11 +12,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 try:
-    # Initialize face detector and emotion detector
+    # Initialize face detector
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    emotion_detector = FER(mtcnn=False)
 except Exception as e:
-    logger.error(f"Error initializing detectors: {str(e)}")
+    logger.error(f"Error initializing face detector: {str(e)}")
     st.error("Error initializing face detection. Please try again later.")
     st.stop()
 
@@ -40,9 +39,11 @@ def detect_faces_and_emotions(image):
             face_img = image[y:y+h, x:x+w]
             if face_img.size > 0:
                 try:
-                    emotion = emotion_detector.detect_emotions(face_img)
-                    if emotion:
-                        emotions.append(max(emotion[0]['emotions'].items(), key=lambda x: x[1])[0])
+                    # Analyze emotion using DeepFace
+                    result = DeepFace.analyze(face_img, actions=['emotion'], enforce_detection=False)
+                    if result and isinstance(result, list) and len(result) > 0:
+                        emotion = result[0]['dominant_emotion']
+                        emotions.append(emotion)
                     else:
                         emotions.append("Unknown")
                 except Exception as e:

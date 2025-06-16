@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: findme-app
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn findme_app.app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.13

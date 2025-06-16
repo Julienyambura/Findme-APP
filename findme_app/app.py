@@ -21,7 +21,10 @@ except Exception as e:
     logger.error(f"Error initializing face detector: {str(e)}")
 
 # Load known face embeddings
-DB_PATH = "database/data.json"
+DB_PATH = os.path.join(os.path.dirname(__file__), "database", "data.json")
+
+# Ensure database directory exists
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 def detect_faces_and_emotions(image):
     try:
@@ -52,29 +55,9 @@ def draw_faces(image, face_locations, emotions):
         logger.error(f"Error drawing faces: {str(e)}")
         return image
 
-def generate_frames():
-    cap = cv2.VideoCapture(0)
-    while True:
-        success, frame = cap.read()
-        if not success:
-            break
-        else:
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            face_locations, emotions = detect_faces_and_emotions(frame_rgb)
-            frame_annotated = draw_faces(frame_rgb.copy(), face_locations, emotions)
-            ret, buffer = cv2.imencode('.jpg', cv2.cvtColor(frame_annotated, cv2.COLOR_RGB2BGR))
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
 @app.route('/')
 def index():
     return render_template('index.html')
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/detect', methods=['POST'])
 def detect_faces():
@@ -121,7 +104,24 @@ def add_missing_person():
         faces = face_cascade.detectMultiScale(gray, 1.1, 4)
 
         if len(faces) > 0:
-            # Here you would typically save the face data to your database
+            # Save the face data to the database
+            data = {}
+            if os.path.exists(DB_PATH):
+                with open(DB_PATH, 'r') as f:
+                    data = json.load(f)
+            
+            # Convert image to base64 for storage
+            _, buffer = cv2.imencode('.jpg', img)
+            img_base64 = base64.b64encode(buffer).decode('utf-8')
+            
+            data[name] = {
+                'image': img_base64,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            with open(DB_PATH, 'w') as f:
+                json.dump(data, f)
+                
             return jsonify({'success': True, 'message': 'Face detected and added to database'})
         else:
             return jsonify({'error': 'No face detected in the image'}), 400
@@ -130,4 +130,5 @@ def add_missing_person():
         return jsonify({'error': 'Error processing image'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

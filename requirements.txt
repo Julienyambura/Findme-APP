@@ -1,4 +1,8 @@
 Flask==2.0.1
-opencv-python==4.5.3.56
-numpy==1.21.2
-gunicorn==20.1.0
+opencv-python==4.8.1.78
+numpy==1.26.4
+gunicorn==21.2.0
+tensorflow==2.15.0
+streamlit==1.32.0
+pillow==10.2.0
+scikit-learn==1.4.1

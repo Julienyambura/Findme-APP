@@ -1,1 +1,0 @@
-web: gunicorn findme_app.app:app 

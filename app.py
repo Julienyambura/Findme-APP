@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 # Load OpenCV's pre-trained Haar Cascade face detector
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-# Load known face embeddings
-DB_PATH = os.path.join(os.path.dirname(__file__), "database", "data.json")
+# Load known face embeddings - updated path for root directory
+DB_PATH = os.path.join("database", "data.json")
 
 # Ensure database directory exists
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
